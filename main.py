@@ -18,8 +18,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from config_manager import load_config, save_config
 from click_engine import ClickEngine
 from coordinate_picker import pick_coordinate, pick_multiple_coordinates
-from uia_helper import get_window_list, find_clickable_elements, HAS_PYWINAUTO
-from uia_picker import pick_uia_element
 from autostart import is_autostart_enabled, set_autostart
 
 
@@ -47,8 +45,6 @@ class ClickSchedulerApp:
         self.tray_icon = None
         self.root = None
         self.minimized = minimized
-        self.window_list = []
-        self.elements = []
 
     def on_status_change(self, msg):
         """状态回调"""
@@ -98,12 +94,7 @@ class ClickSchedulerApp:
         notebook.add(tab2, text="坐标模式")
         self._build_coordinate_tab(tab2)
 
-        # Tab3: UIA模式
-        tab3 = ttk.Frame(notebook)
-        notebook.add(tab3, text="UIA模式")
-        self._build_uia_tab(tab3)
-
-        # Tab4: 设置
+        # Tab3: 设置
         tab4 = ttk.Frame(notebook)
         notebook.add(tab4, text="设置")
         self._build_settings_tab(tab4)
@@ -213,62 +204,6 @@ class ClickSchedulerApp:
         ttk.Label(parent, text="提示：抓取坐标时会全屏半透明显示，移动鼠标查看坐标，左键点击获取",
                    foreground="gray").pack(pady=5)
 
-    def _build_uia_tab(self, parent):
-        """UIA模式Tab"""
-        if not HAS_PYWINAUTO:
-            ttk.Label(parent, text="pywinauto 未安装，UIA模式不可用\n请运行: pip install pywinauto",
-                       foreground="red", font=("微软雅黑", 10)).pack(pady=20)
-            return
-
-        ttk.Label(parent, text="UIA模式：识别窗口内元素并点击",
-                   font=("微软雅黑", 10, "bold")).pack(pady=5)
-
-        # 窗口选择
-        win_frame = ttk.Frame(parent)
-        win_frame.pack(fill="x", padx=10, pady=5)
-
-        ttk.Label(win_frame, text="目标窗口:").pack(side="left", padx=5)
-        self.window_var = tk.StringVar()
-        self.window_combo = ttk.Combobox(win_frame, textvariable=self.window_var,
-                                            width=40, state="readonly")
-        self.window_combo.pack(side="left", padx=5)
-        ttk.Button(win_frame, text="刷新窗口列表",
-                    command=self.refresh_windows).pack(side="left", padx=5)
-
-        # 元素列表
-        ttk.Label(parent, text="可点击元素 (点击列表可查看坐标):").pack(anchor="w", padx=10)
-        self.element_listbox = tk.Listbox(parent, width=60, height=10)
-        self.element_listbox.pack(fill="both", expand=True, padx=10, pady=5)
-        self.element_listbox.bind("<<ListboxSelect>>", self.on_element_select)
-
-        # 坐标显示
-        self.element_coord_var = tk.StringVar(value="选中元素坐标: 无")
-        ttk.Label(parent, textvariable=self.element_coord_var,
-                   foreground="green", font=("Consolas", 10)).pack(padx=10)
-
-        btn_frame = ttk.Frame(parent)
-        btn_frame.pack(fill="x", padx=10, pady=5)
-        ttk.Button(btn_frame, text="识别元素",
-                    command=self.recognize_elements).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="可视化选择元素",
-                    command=self.visual_pick_element).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="使用选中元素",
-                    command=self.use_selected_element).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="测试点击",
-                    command=self.test_click_element).pack(side="left", padx=5)
-
-        # 当前选择
-        self.uia_status_var = tk.StringVar(value="未选择元素")
-        ttk.Label(parent, textvariable=self.uia_status_var,
-                   foreground="blue").pack(pady=5)
-
-        # 加载已有配置
-        if self.config.get("uia_target"):
-            self.uia_status_var.set(f"当前目标: {self.config['uia_target']['window_title']}")
-
-        # 初始刷新窗口
-        self.refresh_windows()
-
     def _build_settings_tab(self, parent):
         """设置Tab"""
         # 开机自启
@@ -291,7 +226,7 @@ class ClickSchedulerApp:
         # 关于
         about_frame = ttk.LabelFrame(parent, text="关于")
         about_frame.pack(fill="x", padx=10, pady=5)
-        ttk.Label(about_frame, text="ClickScheduler v1.0\n定时点击工具\n支持坐标+UIA双模式",
+        ttk.Label(about_frame, text="ClickScheduler v1.0\n定时点击工具\n支持坐标模式",
                    justify="center").pack(pady=10)
 
     def _refresh_coord_list(self):
@@ -344,107 +279,6 @@ class ClickSchedulerApp:
         self._refresh_coord_list()
         self.save_current_config()
 
-    def refresh_windows(self):
-        """刷新窗口列表"""
-        windows = get_window_list()
-        self.window_list = windows
-        titles = [w["title"] for w in windows]
-        self.window_combo["values"] = titles
-        if titles:
-            self.window_combo.current(0)
-
-    def recognize_elements(self):
-        """识别选中窗口的元素"""
-        idx = self.window_combo.current()
-        if idx < 0 or not hasattr(self, 'window_list'):
-            messagebox.showwarning("警告", "请先选择窗口")
-            return
-        window = self.window_list[idx]
-        self.element_listbox.delete(0, "end")
-        self.elements = find_clickable_elements(window_handle=window["handle"])
-        for el in self.elements:
-            name = el["name"] or "(无名称)"
-            self.element_listbox.insert("end", f"{el['control_type']}: {name} [{el['x']},{el['y']}]")
-
-    def use_selected_element(self):
-        """使用选中的元素"""
-        sel = self.element_listbox.curselection()
-        if not sel or not hasattr(self, 'elements'):
-            messagebox.showwarning("警告", "请先识别并选择元素")
-            return
-        idx = sel[0]
-        element = self.elements[idx]
-        window_title = self.window_var.get()
-        self.config["uia_target"] = {
-            "window_title": window_title,
-            "element": element
-        }
-        self.config["click_mode"] = "uia"
-        self.uia_status_var.set(f"当前目标: {window_title} - {element['name'] or element['control_type']} [X={element['x']}, Y={element['y']}]")
-        self.save_current_config()
-        messagebox.showinfo("成功", f"UIA目标已设置\n点击位置: X={element['x']}, Y={element['y']}")
-
-    def on_element_select(self, event):
-        """当选中元素时，显示其坐标"""
-        sel = self.element_listbox.curselection()
-        if not sel or not hasattr(self, 'elements'):
-            return
-        idx = sel[0]
-        element = self.elements[idx]
-        x, y = element["x"], element["y"]
-        name = element["name"] or "(无名称)"
-        self.element_coord_var.set(f"选中元素坐标: X={x}, Y={y}  ({name})")
-
-    def test_click_element(self):
-        """测试点击选中元素（用坐标点击）"""
-        sel = self.element_listbox.curselection()
-        if not sel or not hasattr(self, 'elements'):
-            messagebox.showwarning("警告", "请先识别并选择元素")
-            return
-        idx = sel[0]
-        element = self.elements[idx]
-        x, y = element["x"], element["y"]
-        
-        from uia_helper import click_by_coordinate
-        try:
-            import pyautogui
-            pyautogui.FAILSAFE = False
-            pyautogui.click(x, y)
-            messagebox.showinfo("测试点击", f"已点击坐标:\nX={x}, Y={y}")
-        except Exception as e:
-            messagebox.showerror("错误", f"测试点击失败: {e}")
-
-    def visual_pick_element(self):
-        """启动可视化UIA元素选择"""
-        if not HAS_PYWINAUTO:
-            messagebox.showerror("错误", "pywinauto 未安装")
-            return
-        
-        # 获取当前选中的窗口
-        idx = self.window_combo.current()
-        window_title = self.window_var.get()
-        window_handle = None
-        if idx >= 0 and hasattr(self, 'window_list') and idx < len(self.window_list):
-            window_handle = self.window_list[idx]["handle"]
-        
-        def callback(elem_info):
-            if elem_info:
-                self.config["uia_target"] = {
-                    "window_title": window_title,
-                    "element": elem_info
-                }
-                self.config["click_mode"] = "uia"
-                x, y = elem_info["x"], elem_info["y"]
-                name = elem_info.get("name") or elem_info.get("control_type", "")
-                self.uia_status_var.set(f"当前目标: {window_title} - {name} [X={x}, Y={y}]")
-                self.save_current_config()
-                messagebox.showinfo("成功", f"UIA目标已设置\n名称: {name}\n坐标: X={x}, Y={y}")
-            else:
-                messagebox.showinfo("取消", "已取消可视化选择")
-        
-        # 在主线程中启动（需要在有Tkinter主循环的环境中）
-        pick_uia_element(callback, window_handle=window_handle, window_title=window_title)
-
     def toggle_autostart(self):
         """切换开机自启"""
         enable = self.autostart_var.get()
@@ -475,11 +309,8 @@ class ClickSchedulerApp:
         self.config["max_clicks"] = self.max_clicks_var.get()
         self.config["minimize_to_tray"] = self.minimize_to_tray_var.get()
 
-        # 如果坐标列表有内容，设置为坐标模式
-        if self.config.get("coordinates"):
-            self.config["click_mode"] = "coordinate"
-        elif self.config.get("uia_target"):
-            self.config["click_mode"] = "uia"
+        # 坐标模式
+        self.config["click_mode"] = "coordinate"
 
         save_config(self.config)
         self.engine.update_config(self.config)

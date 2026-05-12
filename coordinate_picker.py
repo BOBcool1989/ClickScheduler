@@ -179,6 +179,26 @@ def pick_multiple_coordinates(callback):
     app.root.mainloop()
 
 
+def click_by_coordinate(x, y, click_type="left_click", drag_to=None):
+    """通过坐标点击"""
+    try:
+        import pyautogui
+        pyautogui.FAILSAFE = False
+
+        if click_type == "left_click":
+            pyautogui.click(x, y, button="left")
+        elif click_type == "left_double":
+            pyautogui.doubleClick(x, y, button="left")
+        elif click_type == "right_click":
+            pyautogui.click(x, y, button="right")
+        elif click_type == "drag" and drag_to:
+            pyautogui.dragTo(drag_to[0], drag_to[1], duration=0.5, button="left")
+        return True
+    except Exception as e:
+        print(f"坐标点击失败: {e}")
+        return False
+
+
 if __name__ == "__main__":
     # 测试
     def on_result(x, y):

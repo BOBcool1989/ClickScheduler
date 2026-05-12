@@ -5,7 +5,7 @@ Author: windai@qq.com 上杉
 import threading
 import time
 import datetime
-from uia_helper import click_uia_element, click_by_coordinate
+from coordinate_picker import click_by_coordinate
 from config_manager import load_config, save_config
 
 
@@ -67,17 +67,6 @@ class ClickEngine:
                 time.sleep(0.1)
             return True
 
-        elif mode == "uia":
-            target = self.config.get("uia_target")
-            if not target:
-                return False
-            # 使用元素坐标进行点击（更精确）
-            element = target.get("element")
-            if element and "x" in element and "y" in element:
-                return click_by_coordinate(element["x"], element["y"], click_type)
-            else:
-                # 降级：用UIA原生点击
-                return click_uia_element(target["window_title"], target)
         return False
 
     def _run_loop(self):
